@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>환율 ATM</title>
+<meta name="description" content="원화를 넣으면 오늘 환율로 바꿔서 외화가 나오는 환율 ATM 시뮬레이션이에요.">
+<style>
+  :root {
+    /* DESIGN.md (Toss) tokens */
+    --blue-500: #3182F6;
+    --blue-600: #1B64DA;
+    --blue-50: #E8F3FF;
+    --grey-900: #191F28;
+    --grey-800: #333D4B;
+    --grey-700: #4E5968;
+    --grey-600: #6B7684;
+    --grey-500: #8B95A1;
+    --grey-400: #B0B8C1;
+    --grey-300: #D1D6DB;
+    --grey-200: #E5E8EB;
+    --grey-100: #F2F4F6;
+    --grey-50: #F9FAFB;
+    --red-500: #F04452;
+    --red-text: #D6212E;      /* red-500보다 어둡게: 흰 배경 위 4.5:1 확보 */
+    --green-text: #0E7C45;    /* 흰 배경 위 4.5:1 확보 */
+    --press: rgba(0, 0, 0, .26);
+    --shadow-2: 0 4px 12px rgba(2, 8, 28, .06), 0 1px 2px rgba(2, 8, 28, .04);
+    --shadow-3: 0 12px 32px rgba(2, 8, 28, .10), 0 2px 6px rgba(2, 8, 28, .06);
+    --shadow-toast: 0 8px 24px rgba(2, 8, 28, .16);
+    --ease: cubic-bezier(.22, .61, .36, 1);
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+    --font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Apple SD Gothic Neo", "Noto Sans KR", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    /* ATM 기기 (참고 이미지: 회색 본체 + 파란 간판) */
+    --steel-top: #C3CAD2;
+    --steel-bottom: #A3ACB6;
+    --steel-edge: #8892A0;
+    --bezel: #E3E7EC;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html { background: var(--grey-50); }
+  body {
+    font-family: var(--font);
+    color: var(--grey-900);
+    background: var(--grey-50);
+    min-height: 100dvh;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- 페이지 ---------- */
+  .stage { max-width: 420px; margin: 0 auto; padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); }
+  .intro { padding: 8px 8px 20px; }
+  .intro h1 { font-size: 28px; line-height: 1.3; font-weight: 700; letter-spacing: -.02em; }
+  .intro p { margin-top: 4px; font-size: 15px; color: var(--grey-700); }
+  .disclaimer { margin-top: 16px; text-align: center; font-size: 12px; color: var(--grey-600); }
+
+  /* ---------- ATM 기기 ---------- */
+  .atm { width: min(100%, 340px); margin: 0 auto; }
+  .atm.shake { animation: shake 360ms var(--ease); }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+  }
+  .sign {
+    position: relative; z-index: 1;
+    margin: 0 18px -10px;
+    height: 58px; border-radius: 14px;
+    background: var(--blue-500);
+    border: 5px solid #DDE3EA;
+    box-shadow: 0 0 0 2px var(--steel-edge), var(--shadow-2);
+    display: grid; place-items: center;
+  }
+  .sign span { color: #fff; font-size: 30px; font-weight: 800; letter-spacing: .06em; text-shadow: 0 2px 0 rgba(0, 0, 0, .18); }
+  .body {
+    position: relative;
+    padding: 24px 14px 18px;
+    border-radius: 28px 28px 20px 20px;
+    background: linear-gradient(160deg, var(--steel-top), var(--steel-bottom));
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35), 0 0 0 2px var(--steel-edge), var(--shadow-3);
+  }
+  .bezel {
+    position: relative;
+    padding: 10px 10px 10px 18px;
+    border-radius: 22px;
+    background: var(--bezel);
+    box-shadow: inset 0 2px 6px rgba(2, 8, 28, .12);
+  }
+  .side-btns { position: absolute; left: 5px; top: 22px; display: grid; gap: 10px; }
+  .side-btns i { display: block; width: 7px; height: 14px; border-radius: 3px; background: var(--grey-600); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .3); }
+  .screen {
+    position: relative; overflow: hidden;
+    min-height: 292px;
+    border-radius: 12px;
+    background: #fff;
+    border: 4px solid var(--grey-800);
+    box-shadow: inset 0 0 0 1px var(--grey-200);
+  }
+  .view { display: flex; flex-direction: column; min-height: 284px; padding: 12px; gap: 8px; animation: viewIn 200ms var(--ease); }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .panel { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; margin-top: 14px; align-items: start; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; border-radius: 14px; background: var(--grey-700); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .3); }
+  .key {
+    min-height: 44px; border-radius: 10px;
+    background: linear-gradient(#F6F8FA, #D9DEE4);
+    box-shadow: 0 2px 0 #7C8693, 0 3px 4px rgba(0, 0, 0, .25);
+    font-size: 18px; font-weight: 700; color: var(--grey-900);
+    transition: transform 120ms var(--ease), box-shadow 120ms var(--ease);
+  }
+  .key:active, .key.pressed { transform: translateY(2px); box-shadow: 0 0 0 #7C8693, 0 1px 2px rgba(0, 0, 0, .25); }
+  .key.fn { font-size: 15px; background: linear-gradient(#E3E7EC, #BCC4CD); }
+
+  .slots { display: grid; gap: 8px; justify-items: stretch; }
+  .slot { position: relative; border-radius: 8px; background: #2B3540; box-shadow: inset 0 3px 6px rgba(0, 0, 0, .5); display: grid; place-items: center; }
+  .slot small { position: absolute; top: calc(100% + 2px); left: 0; right: 0; text-align: center; font-size: 11px; color: var(--grey-800); font-weight: 600; }
+  .card-slot { height: 12px; margin: 0 8px 14px; }
+  .bill-slot { height: 18px; margin-bottom: 16px; }
+  .bill-slot .led { position: absolute; right: 6px; top: -9px; width: 8px; height: 8px; border-radius: 50%; background: var(--grey-500); }
+  .bill-slot.ready .led { background: #2BD97C; box-shadow: 0 0 8px #2BD97C; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .receipt-slot { height: 10px; margin: 6px 14px 14px; }
+
+  /* 지폐 (드래그 대상) */
+  .bill {
+    position: relative; z-index: 3; touch-action: none; user-select: none; -webkit-user-select: none;
+    height: 56px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 10px;
+    background: #DCEBD8; border: 2px solid #8FB58A; color: #2F5E3A;
+    box-shadow: 0 2px 6px rgba(2, 8, 28, .18);
+    transition: transform 260ms var(--ease-out), opacity 200ms var(--ease);
+    cursor: grab;
+  }
+  .bill .coin { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; font-size: 13px; font-weight: 800; }
+  .bill .amt { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
+  .bill.dragging { transition: none; cursor: grabbing; box-shadow: 0 8px 18px rgba(2, 8, 28, .3); }
+  .bill[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+  .bill-hint { margin-top: -2px; font-size: 11px; color: var(--grey-800); text-align: center; font-weight: 600; line-height: 1.35; }
+
+  .door { margin-top: 16px; padding: 12px; border-radius: 14px; background: linear-gradient(#97A1AC, #8B95A1); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .25); }
+  .dispenser { position: relative; height: 150px; cursor: default; }
+  .dispenser.ready { cursor: pointer; }
+  .opening { position: absolute; left: 0; right: 0; top: 0; height: 26px; border-radius: 8px; background: #2B3540; box-shadow: inset 0 4px 8px rgba(0, 0, 0, .55); }
+  .bills { position: absolute; inset: 0; clip-path: inset(24px 0 0 0); pointer-events: none; }
+  .out-bill {
+    position: absolute; top: 26px; left: 50%; width: 112px; height: 54px; margin-left: -56px;
+    border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-weight: 800; font-size: 18px; border: 2px solid; box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+    transform: translate(var(--x), -64px) rotate(var(--r));
+    animation: pop 480ms var(--ease-out) forwards; animation-delay: var(--d);
+  }
+  @keyframes pop { to { transform: translate(var(--x), var(--y)) rotate(var(--r)); } }
+  .out-bill.gone { animation: gone 340ms var(--ease) forwards; }
+  @keyframes gone { from { transform: translate(var(--x), var(--y)) rotate(var(--r)); opacity: 1; } to { transform: translate(var(--x), 130px) rotate(var(--r)); opacity: 0; } }
+  .out-bill.USD { background: #D5E7D1; border-color: #7FA97A; color: #2F5E3A; }
+  .out-bill.JPY { background: #EFE3CB; border-color: #C2A15E; color: #7B5C1E; }
+  .out-bill.EUR { background: #D3E3F0; border-color: #7FA3C2; color: #2D5878; }
+  .take {
+    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+    min-width: 132px; min-height: 44px; padding: 0 20px; border-radius: 999px;
+    background: var(--blue-500); color: #fff; font-weight: 700; font-size: 15px;
+    box-shadow: var(--shadow-toast);
+    animation: nudge 1.2s var(--ease) infinite;
+  }
+  @keyframes nudge { 50% { transform: translateX(-50%) translateY(-3px); } }
+  .take:active { background: #2A72DC; }
+
+  /* ---------- 화면 안 UI (Toss) ---------- */
+  .top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--grey-600); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 999px; background: var(--blue-50); color: var(--blue-600); font-size: 12px; font-weight: 700; }
+  .chips { display: flex; gap: 6px; }
+  .chip {
+    flex: 1; min-height: 44px; border-radius: 999px; border: 1px solid var(--grey-200); background: #fff;
+    font-size: 14px; font-weight: 600; color: var(--grey-700);
+    transition: background-color 200ms var(--ease), color 200ms var(--ease);
+  }
+  .chip[aria-pressed="true"] { background: var(--grey-900); border-color: var(--grey-900); color: #fff; }
+  .field-label { font-size: 12px; color: var(--grey-600); font-weight: 600; margin-top: 2px; }
+  .amount { display: flex; align-items: baseline; gap: 4px; min-height: 40px; border-bottom: 1.5px solid var(--blue-500); padding-bottom: 2px; }
+  .amount strong { font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -.02em; }
+  .amount strong.empty { color: var(--grey-400); }
+  .amount span { font-size: 18px; font-weight: 600; color: var(--grey-700); }
+  .amount.error { border-color: var(--red-500); }
+  .helper { font-size: 12px; color: var(--grey-600); min-height: 18px; }
+  .helper.error { color: var(--red-text); font-weight: 600; }
+  .rate-box { display: grid; gap: 2px; padding: 8px 12px; border-radius: 12px; background: var(--grey-100); font-size: 12px; color: var(--grey-700); }
+  .rate-box b { font-size: 14px; color: var(--grey-900); }
+  .rate-box .sub { color: var(--grey-600); }
+  .btn {
+    min-height: 48px; border-radius: 14px; padding: 0 16px; font-size: 17px; font-weight: 700;
+    background: var(--blue-500); color: #fff; width: 100%;
+    transition: filter 120ms var(--ease), opacity 200ms var(--ease);
+  }
+  .btn:active:not(:disabled) { filter: brightness(.74); }
+  .btn:disabled { opacity: .3; }
+  .btn.secondary { background: var(--grey-100); color: var(--grey-900); }
+  .btn.ghost { background: transparent; color: var(--blue-600); min-height: 44px; font-size: 14px; font-weight: 600; width: auto; align-self: center; }
+  .grow { flex: 1; }
+  .center { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; flex: 1; }
+  .center h2 { font-size: 18px; font-weight: 700; line-height: 1.35; }
+  .center p { font-size: 14px; color: var(--grey-700); }
+  .big-emoji { font-size: 44px; line-height: 1; }
+  .dots { display: inline-flex; gap: 6px; }
+  .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-500); animation: pulse 900ms var(--ease) infinite; }
+  .dots i:nth-child(2) { animation-delay: 150ms; }
+  .dots i:nth-child(3) { animation-delay: 300ms; }
+  @keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+  .loading-dots { display: inline-flex; gap: 4px; vertical-align: middle; }
+  .loading-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--grey-500); animation: pulse 900ms var(--ease) infinite; }
+  .loading-dots i:nth-child(2) { animation-delay: 150ms; }
+  .loading-dots i:nth-child(3) { animation-delay: 300ms; }
+
+  /* ---------- 결과 시트 ---------- */
+  .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .56); animation: fade 200ms var(--ease); display: flex; align-items: flex-end; justify-content: center; }
+  @keyframes fade { from { opacity: 0; } }
+  .sheet {
+    width: min(100%, 420px); max-height: 94dvh; overflow-y: auto;
+    padding: 12px 24px calc(20px + env(safe-area-inset-bottom));
+    background: #fff; border-radius: 24px 24px 0 0; box-shadow: 0 -2px 12px rgba(2, 8, 28, .06);
+    animation: sheetUp 320ms var(--ease-out);
+  }
+  @keyframes sheetUp { from { transform: translateY(100%); } }
+  .grabber { width: 36px; height: 4px; border-radius: 2px; background: var(--grey-300); margin: 0 auto 16px; }
+  .sheet .lead { font-size: 15px; color: var(--grey-700); }
+  .sheet .result { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
+  .sheet .result strong { font-size: 44px; line-height: 1.2; font-weight: 700; letter-spacing: -.03em; }
+  .sheet .result span { font-size: 20px; font-weight: 700; color: var(--grey-700); }
+  .change { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; min-height: 34px; padding: 0 14px; border-radius: 999px; font-size: 14px; font-weight: 700; }
+  .change.up { background: #E4F6EC; color: var(--green-text); }
+  .change.down { background: #FDE8EA; color: var(--red-text); }
+  .change.flat { background: var(--grey-100); color: var(--grey-700); }
+  .change .emo { font-size: 18px; display: inline-block; animation: wiggle 900ms var(--ease) 1; }
+  @keyframes wiggle { 0% { transform: scale(.3) rotate(-20deg); } 60% { transform: scale(1.25) rotate(8deg); } 100% { transform: none; } }
+  .rows { margin-top: 16px; border-top: 1px solid var(--grey-200); }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--grey-200); font-size: 14px; }
+  .row dt { color: var(--grey-600); }
+  .row dd { font-weight: 600; text-align: right; }
+  .streak { margin-top: 16px; padding: 14px 12px 12px; border-radius: 16px; background: var(--grey-100); }
+  .streak h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  .stamps { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .stamp { display: grid; justify-items: center; gap: 4px; font-size: 11px; color: var(--grey-600); }
+  .stamp i {
+    width: 34px; height: 34px; border-radius: 50%; border: 1.5px dashed var(--grey-400);
+    display: grid; place-items: center; font-style: normal; font-size: 16px; background: #fff;
+  }
+  .stamp.on i { border: 0; background: var(--blue-500); color: #fff; font-weight: 800; }
+  .stamp.today i { animation: stamp 520ms var(--ease-out) 350ms both; }
+  @keyframes stamp { from { transform: scale(2.6) rotate(-24deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  .sheet .btn { margin-top: 16px; }
+  .sheet .fine { margin-top: 12px; text-align: center; font-size: 12px; color: var(--grey-600); }
+  .confetti { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+  .confetti i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: fall var(--t) linear var(--dl) forwards; }
+  @keyframes fall { to { transform: translate(var(--dx), 105dvh) rotate(720deg); } }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 40;
+    transform: translateX(-50%); max-width: calc(100% - 32px);
+    padding: 12px 18px; border-radius: 14px; background: var(--grey-900); color: #fff; font-size: 14px; font-weight: 600;
+    box-shadow: var(--shadow-toast); animation: toastIn 320ms var(--ease-out);
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    .confetti { display: none; }
+  }
+  @media (max-width: 359px) {
+    .amount strong { font-size: 26px; }
+    .sheet .result strong { font-size: 38px; }
+  }
+</style>
+</head>
+<body>
+<main class="stage">
+  <header class="intro">
+    <h1>환율 ATM</h1>
+    <p>원화를 넣으면 오늘 환율로 바꿔서 줘요</p>
+  </header>
+
+  <section class="atm" id="atm" aria-label="환율 ATM 기기">
+    <div class="sign"><span>ATM</span></div>
+    <div class="body">
+      <div class="bezel">
+        <div class="side-btns" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="screen" id="screen" aria-live="polite">
+
+          <!-- 1) 금액 입력 -->
+          <div class="view" data-view="input">
+            <div class="top-row">
+              <span class="badge" id="streakBadge">🔥 1일째</span>
+              <span id="todayLabel"></span>
+            </div>
+            <div class="chips" role="group" aria-label="받을 통화">
+              <button class="chip" type="button" data-cur="USD" aria-pressed="true">USD</button>
+              <button class="chip" type="button" data-cur="JPY" aria-pressed="false">JPY</button>
+              <button class="chip" type="button" data-cur="EUR" aria-pressed="false">EUR</button>
+            </div>
+            <div class="field-label">넣을 금액</div>
+            <div class="amount" id="amountWrap"><strong class="num empty" id="amountText">0</strong><span>원</span></div>
+            <div class="helper" id="helper">1,000원 ~ 1,000,000원</div>
+            <div class="rate-box" id="rateBox"></div>
+            <div class="grow"></div>
+            <button class="btn" type="button" id="exchangeBtn" disabled>환전하기</button>
+          </div>
+
+          <!-- 2) 연출: 환율 확인 중 -->
+          <div class="view" data-view="loading" hidden>
+            <div class="center">
+              <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+              <h2>오늘 환율을 확인하고 있어요</h2>
+              <p>잠시만 기다려주세요</p>
+            </div>
+            <button class="btn ghost" type="button" data-skip>건너뛰기</button>
+          </div>
+
+          <!-- 2) 연출: 현금 배출 -->
+          <div class="view" data-view="dispense" hidden>
+            <div class="center">
+              <div class="big-emoji" aria-hidden="true">💸</div>
+              <h2>현금이 나왔어요</h2>
+              <p>아래 배출구에서 가져가주세요</p>
+            </div>
+            <button class="btn ghost" type="button" data-skip>건너뛰기</button>
+          </div>
+
+          <!-- 오류 -->
+          <div class="view" data-view="error" hidden>
+            <div class="center">
+              <div class="big-emoji" aria-hidden="true">🛠️</div>
+              <h2>환율을 불러오지 못했어요</h2>
+              <p>네트워크를 확인하고 다시 시도해주세요</p>
+            </div>
+            <button class="btn" type="button" id="retryBtn">다시 불러오기</button>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="keypad" role="group" aria-label="금액 키패드">
+          <button class="key" type="button" data-k="1">1</button>
+          <button class="key" type="button" data-k="2">2</button>
+          <button class="key" type="button" data-k="3">3</button>
+          <button class="key" type="button" data-k="4">4</button>
+          <button class="key" type="button" data-k="5">5</button>
+          <button class="key" type="button" data-k="6">6</button>
+          <button class="key" type="button" data-k="7">7</button>
+          <button class="key" type="button" data-k="8">8</button>
+          <button class="key" type="button" data-k="9">9</button>
+          <button class="key fn" type="button" data-k="C" aria-label="전체 지우기">C</button>
+          <button class="key" type="button" data-k="0">0</button>
+          <button class="key fn" type="button" data-k="B" aria-label="한 자리 지우기">←</button>
+        </div>
+        <div class="slots">
+          <div class="slot card-slot" aria-hidden="true"><small>카드</small></div>
+          <div class="slot bill-slot" id="billSlot" aria-hidden="true"><span class="led"></span><small>지폐 투입구</small></div>
+          <button class="bill" type="button" id="bill" aria-disabled="true" aria-label="지폐 넣기">
+            <span class="coin" aria-hidden="true">₩</span><span class="amt num" id="billAmt">0</span>
+          </button>
+          <p class="bill-hint" id="billHint">금액을 입력하면<br>지폐를 넣을 수 있어요</p>
+          <div class="slot receipt-slot" aria-hidden="true"><small>영수증</small></div>
+        </div>
+      </div>
+
+      <div class="door">
+        <div class="dispenser" id="dispenser">
+          <div class="opening" aria-hidden="true"></div>
+          <div class="bills" id="outBills" aria-hidden="true"></div>
+          <button class="take" type="button" id="takeBtn" hidden>가져가기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="disclaimer">시뮬레이션이에요. 실제 환전이 아니에요.</p>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- 설정 ---------- */
+  const API = 'https://api.frankfurter.dev/v2/rates';
+  const MIN = 1000, MAX = 1000000;
+  // 정밀도: base=KRW는 rate가 소수점 5자리로 반올림되어 오차가 크므로
+  // 외화를 base로 조회(KRW per 1 외화)하고 krw / rate 로 환산한다.
+  const CUR = {
+    USD: { sym: '$', unit: 1 },
+    JPY: { sym: '¥', unit: 100 },
+    EUR: { sym: '€', unit: 1 }
+  };
+  const RATE_CACHE_KEY = 'fxatm.rates';
+  const VISIT_KEY = 'fxatm.visits';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  /* ---------- 요소 ---------- */
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const atm = $('#atm'), screenEl = $('#screen');
+  const views = Object.fromEntries($$('.view').map(v => [v.dataset.view, v]));
+  const amountText = $('#amountText'), amountWrap = $('#amountWrap'), helper = $('#helper');
+  const rateBox = $('#rateBox'), exchangeBtn = $('#exchangeBtn');
+  const bill = $('#bill'), billAmt = $('#billAmt'), billHint = $('#billHint'), billSlot = $('#billSlot');
+  const dispenser = $('#dispenser'), outBills = $('#outBills'), takeBtn = $('#takeBtn');
+
+  /* ---------- 상태 ---------- */
+  let amount = '';
+  let cur = 'USD';
+  let state = 'input';            // input | running | take | result
+  let session = null;             // 진행 중인 환전 {id, rates}
+  let ratesStatus = 'loading';    // loading | ok | cached | error
+  let rates = null;
+  let ratesPromise = null;
+
+  /* ---------- 유틸 ---------- */
+  const fmtKRW = n => Number(n).toLocaleString('ko-KR');
+  const fmtFx = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sleep = ms => new Promise(r => setTimeout(r, reduce.matches ? Math.min(ms, 30) : ms));
+  const vibrate = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+  const todayStr = () => new Date().toLocaleDateString('sv-SE');
+  const shiftDate = (s, d) => { const t = new Date(s + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); };
+  const korDate = s => { const [y, m, d] = s.split('-').map(Number); return `${y}년 ${m}월 ${d}일`; };
+  const value = () => Number(amount || 0);
+  const isValid = () => value() >= MIN && value() <= MAX;
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  function toast(msg) {
+    $$('.toast').forEach(t => t.remove());
+    const t = document.createElement('div');
+    t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2200);
+  }
+
+  function show(name) {
+    Object.entries(views).forEach(([k, v]) => { v.hidden = k !== name; });
+  }
+
+  /* ---------- 방문 기록 · 연속 방문 ---------- */
+  function recordVisit() {
+    const data = store.get(VISIT_KEY) || { days: [] };
+    const t = todayStr();
+    if (!data.days.includes(t)) data.days.push(t);
+    data.days = [...new Set(data.days)].sort().slice(-30);
+    store.set(VISIT_KEY, data);
+    return data.days;
+  }
+  function streakOf(days) {
+    const set = new Set(days);
+    let n = 0, d = todayStr();
+    while (set.has(d)) { n++; d = shiftDate(d, -1); }
+    return n;
+  }
+  let visitDays = recordVisit();
+
+  /* ---------- 환율 ---------- */
+  async function getJson(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) throw new Error('empty');
+    return data[0];
+  }
+  async function fetchRates() {
+    const out = {};
+    await Promise.all(Object.keys(CUR).map(async c => {
+      const now = await getJson(`${API}?base=${c}&quotes=KRW`);
+      let prev = null;
+      try {
+        const p = await getJson(`${API}?base=${c}&quotes=KRW&date=${shiftDate(now.date, -1)}`);
+        if (p.date < now.date) prev = { rate: p.rate, date: p.date };
+      } catch (e) { /* 전일 환율이 없으면 등락만 생략 */ }
+      out[c] = { rate: now.rate, date: now.date, prev };
+    }));
+    return out;
+  }
+  function loadRates() {
+    ratesStatus = 'loading'; renderRate();
+    ratesPromise = fetchRates().then(r => {
+      rates = r; ratesStatus = 'ok'; store.set(RATE_CACHE_KEY, r); renderRate(); return r;
+    }).catch(() => {
+      const cached = store.get(RATE_CACHE_KEY);
+      if (cached && cached.USD && cached.JPY && cached.EUR) { rates = cached; ratesStatus = 'cached'; }
+      else { rates = null; ratesStatus = 'error'; }
+      renderRate(); return rates;
+    });
+    return ratesPromise;
+  }
+  function changePct(c) {
+    const r = rates && rates[c];
+    if (!r || !r.prev) return null;
+    return (r.rate - r.prev.rate) / r.prev.rate * 100;
+  }
+
+  /* ---------- 렌더 ---------- */
+  function renderRate() {
+    const u = CUR[cur];
+    if (ratesStatus === 'loading') {
+      rateBox.innerHTML = `<b>오늘 환율</b><span class="sub">불러오는 중이에요 <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>`;
+    } else if (!rates) {
+      rateBox.innerHTML = `<b>오늘 환율</b><span class="sub">불러오지 못했어요</span>`;
+    } else {
+      const r = rates[cur];
+      const note = ratesStatus === 'cached' ? ' · 저장된 환율이에요' : '';
+      rateBox.innerHTML = `<b class="num">${u.unit} ${cur} = ${fmtFx(r.rate * u.unit)}원</b><span class="sub">${korDate(r.date)} 기준${note}</span>`;
+    }
+  }
+  function renderAmount() {
+    const v = value();
+    amountText.textContent = amount ? fmtKRW(v) : '0';
+    amountText.classList.toggle('empty', !amount);
+    const tooLow = amount && v < MIN;
+    amountWrap.classList.toggle('error', !!tooLow);
+    helper.classList.toggle('error', !!tooLow);
+    helper.textContent = tooLow ? `${fmtKRW(MIN)}원부터 환전할 수 있어요`
+      : v >= MAX ? `한 번에 최대 ${fmtKRW(MAX)}원까지 환전할 수 있어요`
+      : `${fmtKRW(MIN)}원 ~ ${fmtKRW(MAX)}원`;
+    const ok = isValid();
+    exchangeBtn.disabled = !ok;
+    bill.setAttribute('aria-disabled', String(!ok));
+    billSlot.classList.toggle('ready', ok);
+    billAmt.textContent = fmtKRW(v);
+    billHint.innerHTML = ok ? '지폐를 투입구로 끌어넣거나<br>탭해요' : '금액을 입력하면<br>지폐를 넣을 수 있어요';
+  }
+  function renderStreak() {
+    $('#streakBadge').textContent = `🔥 ${streakOf(visitDays)}일째`;
+    $('#todayLabel').textContent = korDate(todayStr());
+  }
+
+  /* ---------- 입력 (키패드·키보드) ---------- */
+  function press(k) {
+    if (state !== 'input') return;
+    vibrate(12);
+    if (k === 'C') amount = '';
+    else if (k === 'B') amount = amount.slice(0, -1);
+    else {
+      const next = (amount + k).replace(/^0+/, '');
+      if (next.length > 7 || Number(next) > MAX) {
+        atm.classList.remove('shake'); void atm.offsetWidth; atm.classList.add('shake');
+        vibrate(40);
+        helper.textContent = `한 번에 최대 ${fmtKRW(MAX)}원까지 환전할 수 있어요`;
+        return;
+      }
+      amount = next;
+    }
+    renderAmount();
+  }
+  $$('.key').forEach(b => b.addEventListener('click', () => press(b.dataset.k)));
+  document.addEventListener('keydown', e => {
+    if (state !== 'input' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^[0-9]$/.test(e.key)) {
+      const key = $(`.key[data-k="${e.key}"]`); key.classList.add('pressed'); setTimeout(() => key.classList.remove('pressed'), 120);
+      press(e.key);
+    } else if (e.key === 'Backspace') press('B');
+    else if (e.key === 'Enter' && document.activeElement === document.body) exchange();
+  });
+  $$('.chip').forEach(c => c.addEventListener('click', () => {
+    cur = c.dataset.cur;
+    $$('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === c)));
+    vibrate(10); renderRate();
+  }));
+
+  /* ---------- 지폐 드래그 / 탭 ---------- */
+  let drag = null;
+  const center = r => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  bill.addEventListener('pointerdown', e => {
+    if (state !== 'input' || !isValid()) return;
+    bill.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, moved: false };
+    bill.classList.add('dragging');
+  });
+  bill.addEventListener('pointermove', e => {
+    if (!drag) return;
+    drag.dx = e.clientX - drag.x; drag.dy = e.clientY - drag.y;
+    if (Math.hypot(drag.dx, drag.dy) > 6) drag.moved = true;
+    bill.style.transform = `translate(${drag.dx}px, ${drag.dy}px) rotate(${Math.max(-12, Math.min(12, drag.dx / 14))}deg)`;
+  });
+  const endDrag = e => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    bill.classList.remove('dragging');
+    const b = center(bill.getBoundingClientRect()), s = billSlot.getBoundingClientRect();
+    const over = b.x > s.left - 24 && b.x < s.right + 24 && b.y > s.top - 30 && b.y < s.bottom + 30;
+    if (e.type === 'pointercancel' || (d.moved && !over)) { bill.style.transform = ''; return; }
+    exchange();
+  };
+  bill.addEventListener('pointerup', endDrag);
+  bill.addEventListener('pointercancel', endDrag);
+  bill.addEventListener('click', e => {
+    if (e.detail !== 0) return;               // 키보드(Enter/Space)로 누른 경우만
+    if (!isValid()) return toast('금액을 먼저 입력해주세요');
+    exchange();
+  });
+  bill.addEventListener('pointerdown', () => { if (state === 'input' && !isValid()) toast('금액을 먼저 입력해주세요'); });
+
+  function insertBill() {
+    const from = center(bill.getBoundingClientRect()), to = center(billSlot.getBoundingClientRect());
+    const cur = bill.style.transform || 'none';
+    bill.style.transform = '';
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const startT = cur === 'none' ? 'none' : cur;
+    const anim = bill.animate([
+      { transform: startT, opacity: 1 },
+      { transform: `translate(${dx}px, ${dy}px) scale(.3)`, opacity: 0 }
+    ], { duration: reduce.matches ? 1 : 620, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'forwards' });
+    return anim.finished.catch(() => {});
+  }
+  function resetBill() {
+    bill.getAnimations().forEach(a => a.cancel());
+    bill.style.transform = '';
+  }
+
+  /* ---------- 환전 흐름: 입력 → 연출 → 결과 ---------- */
+  async function exchange() {
+    if (state !== 'input' || !isValid()) return;
+    const my = session = { id: Symbol(), cancelled: false, amount: value(), cur };
+    state = 'running';
+    exchangeBtn.disabled = true;
+    vibrate([30, 40, 30]);
+    show('loading');
+    atm.classList.remove('shake'); void atm.offsetWidth; atm.classList.add('shake');
+
+    await insertBill();
+    if (my.cancelled) return;
+    await Promise.all([sleep(800), ratesPromise]);
+    if (my.cancelled) return;
+
+    if (!rates) {                                  // 환율 없음 → 오류
+      state = 'input'; session = null; resetBill(); show('error'); return;
+    }
+    // 현금 배출 연출
+    state = 'take';
+    show('dispense');
+    dispense(my);
+  }
+
+  function dispense(my) {
+    const sym = CUR[my.cur].sym;
+    outBills.innerHTML = '';
+    const layout = [{ x: '-18px', y: '10px', r: '-7deg' }, { x: '16px', y: '0px', r: '5deg' }, { x: '0px', y: '16px', r: '-1deg' }];
+    layout.forEach((p, i) => {
+      const b = document.createElement('div');
+      b.className = 'out-bill ' + my.cur;
+      b.style.setProperty('--x', p.x); b.style.setProperty('--y', p.y); b.style.setProperty('--r', p.r);
+      b.style.setProperty('--d', (i * 220) + 'ms');
+      b.textContent = sym;
+      outBills.appendChild(b);
+      setTimeout(() => vibrate(14), i * 220 + 80);
+    });
+    setTimeout(() => {
+      if (my.cancelled || state !== 'take') return;
+      takeBtn.hidden = false; dispenser.classList.add('ready');
+    }, reduce.matches ? 30 : 760);
+  }
+
+  async function take() {
+    if (state !== 'take') return;
+    vibrate(30);
+    $$('.out-bill', outBills).forEach(b => b.classList.add('gone'));
+    takeBtn.hidden = true; dispenser.classList.remove('ready');
+    await sleep(360);
+    openResult(session);
+  }
+  takeBtn.addEventListener('click', e => { e.stopPropagation(); take(); });
+  dispenser.addEventListener('click', take);
+
+  async function skip() {
+    if (state !== 'running' && state !== 'take') return;
+    const my = session;
+    my.cancelled = true;
+    await ratesPromise;
+    if (!rates) { state = 'input'; session = null; resetBill(); show('error'); return; }
+    resetBill();
+    openResult(my);
+  }
+  $$('[data-skip]').forEach(b => b.addEventListener('click', skip));
+  exchangeBtn.addEventListener('click', exchange);
+
+  $('#retryBtn').addEventListener('click', async () => {
+    show('input'); renderAmount();
+    await loadRates();
+    if (!rates) show('error');
+  });
+
+  /* ---------- 결과 ---------- */
+  function openResult(my) {
+    state = 'result';
+    outBills.innerHTML = ''; takeBtn.hidden = true; dispenser.classList.remove('ready');
+    show('input'); exchangeBtn.disabled = true;
+
+    const c = my.cur, u = CUR[c], r = rates[c];
+    const foreign = my.amount / r.rate;
+    const pct = changePct(c);
+    visitDays = recordVisit();
+    const streak = streakOf(visitDays);
+
+    let chg = '';
+    if (pct === null) chg = '';
+    else if (Math.abs(pct) < 0.005) chg = `<div class="change flat"><span class="emo" aria-hidden="true">😐</span>어제와 같아요</div>`;
+    else if (pct > 0) chg = `<div class="change up"><span class="emo" aria-hidden="true">🚀</span>어제보다 ▲ ${pct.toFixed(2)}%</div>`;
+    else chg = `<div class="change down"><span class="emo" aria-hidden="true">😢</span>어제보다 ▼ ${Math.abs(pct).toFixed(2)}%</div>`;
+
+    const week = ['일', '월', '화', '수', '목', '금', '토'];
+    const days = Array.from({ length: 7 }, (_, i) => shiftDate(todayStr(), i - 6));
+    const stamps = days.map(d => {
+      const on = visitDays.includes(d), isToday = d === todayStr();
+      const w = week[new Date(d + 'T00:00:00').getDay()];
+      return `<div class="stamp${on ? ' on' : ''}${isToday ? ' today' : ''}"><i>${on ? '✓' : ''}</i><span>${w}</span></div>`;
+    }).join('');
+    const streakMsg = streak >= 7 ? `🎉 ${streak}일 연속 방문을 달성했어요!` : `${streak}일 연속 방문 중이에요`;
+
+    const scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+        <div class="grabber"></div>
+        <p class="lead" id="rTitle">${fmtKRW(my.amount)}원을 환전했어요</p>
+        <div class="result"><strong class="num" id="roll">0.00</strong><span>${c}</span></div>
+        ${chg}
+        <dl class="rows">
+          <div class="row"><dt>적용 환율</dt><dd class="num">${u.unit} ${c} = ${fmtFx(r.rate * u.unit)}원</dd></div>
+          <div class="row"><dt>기준일</dt><dd>${korDate(r.date)}${ratesStatus === 'cached' ? ' (저장된 환율)' : ''}</dd></div>
+        </dl>
+        <div class="streak"><h3>${streakMsg}</h3><div class="stamps">${stamps}</div></div>
+        <button class="btn" type="button" id="againBtn">다시 하기</button>
+        <p class="fine">시뮬레이션이에요. 실제 환전이 아니에요.</p>
+      </div>`;
+    document.body.appendChild(scrim);
+    $('#againBtn', scrim).focus({ preventScroll: true });
+    $('#againBtn', scrim).addEventListener('click', () => { scrim.remove(); $$('.confetti').forEach(x => x.remove()); reset(); });
+
+    roll($('#roll', scrim), foreign);
+    if (streak >= 7) confetti();
+  }
+
+  function roll(el, to) {
+    if (reduce.matches) { el.textContent = fmtFx(to); return; }
+    const dur = 1000, t0 = performance.now();
+    const tick = now => {
+      const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 4);
+      el.textContent = fmtFx(p < 1 ? to * e * (0.9 + Math.random() * 0.1 * (1 - p)) : to);
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function confetti() {
+    if (reduce.matches) return;
+    const box = document.createElement('div'); box.className = 'confetti'; box.setAttribute('aria-hidden', 'true');
+    const colors = ['#3182F6', '#FFC342', '#F04452', '#2BD97C', '#B0B8C1'];
+    for (let i = 0; i < 40; i++) {
+      const p = document.createElement('i');
+      p.style.left = Math.random() * 100 + '%';
+      p.style.background = colors[i % colors.length];
+      p.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+      p.style.setProperty('--t', (1.6 + Math.random() * 1.4) + 's');
+      p.style.setProperty('--dl', (Math.random() * 0.5) + 's');
+      box.appendChild(p);
+    }
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 3600);
+  }
+
+  function reset() {
+    amount = ''; state = 'input'; session = null;
+    resetBill(); show('input'); renderAmount(); renderStreak(); renderRate();
+    bill.style.opacity = '';
+    if (ratesStatus === 'error') loadRates();
+  }
+
+  /* ---------- 시작 ---------- */
+  renderAmount(); renderStreak(); renderRate();
+  loadRates().then(() => { if (!rates && state === 'input') show('error'); });
+})();
+</script>
+</body>
+</html>
